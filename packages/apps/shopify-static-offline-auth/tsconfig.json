@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "rootDir": "src",
+    "outDir": "dist/ts",
+    "types": ["node", "jest"],
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "declarationMap": false,
+    "composite": false
+  },
+  "include": ["src/**/*.ts"]
+}

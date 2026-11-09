@@ -1,0 +1,56 @@
+{
+  "name": "shopify-static-offline-auth",
+  "version": "0.1.1",
+  "description": "Read-only, pre-provisioned offline credentials for custom Shopify React Router apps",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sanghogu/shopify-app-js.git",
+    "directory": "packages/apps/shopify-static-offline-auth"
+  },
+  "homepage": "https://github.com/sanghogu/shopify-app-js/tree/main/packages/apps/shopify-static-offline-auth#readme",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.mjs",
+  "types": "./dist/ts/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/ts/index.d.ts",
+      "import": "./dist/esm/index.mjs",
+      "require": "./dist/cjs/index.js",
+      "default": "./dist/esm/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rimraf dist && rollup -c rollup.config.js --bundleConfigAsCjs && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "jest --runInBand && node --test tests/contract.test.mjs",
+    "test:ci": "pnpm test",
+    "test:package": "node scripts/test-package.mjs",
+    "clean": "rimraf dist .rollup.cache tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@shopify/shopify-api": "^15.1.1",
+    "@shopify/shopify-app-react-router": "^4.0.2",
+    "@shopify/shopify-app-session-storage": "^7.0.3"
+  },
+  "devDependencies": {
+    "@shopify/shopify-api": "^15.1.1",
+    "@shopify/shopify-app-react-router": "^4.0.2",
+    "@shopify/shopify-app-session-storage": "^7.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router": "7.17.0"
+  }
+}
