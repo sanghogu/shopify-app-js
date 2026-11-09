@@ -4,6 +4,8 @@ When creating Shopify apps, you'll generate access tokens for the API to create 
 
 These packages provide several database-specific implementations of the `SessionStorage` interface, to make it easier to set up apps with your preferred stack.
 
+This fork also includes [`shopify-static-offline-auth`](./shopify-static-offline-auth#readme), an independent read-only adapter for pre-provisioned non-expiring tokens. Use its public `StaticSessionStorage` with `shopifyApp()` and common scopes. Unlike database adapters, it explicitly rejects session writes and deletions; its documentation describes the required application-level handling and an optional React Router wrapper.
+
 ## Packages
 
 | Package                                                                                              | Latest version                                                                                                                                                                            | Description                                                                           |

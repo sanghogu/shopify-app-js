@@ -1,6 +1,6 @@
 import {Session} from '@shopify/shopify-api';
 
-import {StaticOfflineSessionStorage} from '../storage';
+import {StaticSessionStorage} from '..';
 import {
   StaticOfflineReadOnlyError,
   StaticOfflineShopNotConfiguredError,
@@ -14,7 +14,7 @@ const stores = () => ({
 });
 
 it('makes a fresh active offline session for every read, with no expiration or refresh token', async () => {
-  const storage = new StaticOfflineSessionStorage(stores());
+  const storage = new StaticSessionStorage({stores: stores()});
   const first = await storage.loadSession(id);
   expect(first).toBeInstanceOf(Session);
   expect(first.isActive(['read_products'])).toBe(true);
@@ -31,8 +31,8 @@ it('makes a fresh active offline session for every read, with no expiration or r
 
 it('snapshots input and remains consistent across fresh instances', async () => {
   const source = stores();
-  const first = new StaticOfflineSessionStorage(source);
-  const second = new StaticOfflineSessionStorage(source);
+  const first = new StaticSessionStorage({stores: source});
+  const second = new StaticSessionStorage({stores: source});
   source[shop].accessToken = 'changed';
   source[shop].scopes.push('write_products');
   const a = await first.loadSession(id);
@@ -52,13 +52,13 @@ it.each([
   'throws on missing/online ids instead of allowing token exchange: %s',
   async (sessionId) => {
     await expect(
-      new StaticOfflineSessionStorage(stores()).loadSession(sessionId),
+      new StaticSessionStorage({stores: stores()}).loadSession(sessionId),
     ).rejects.toBeInstanceOf(StaticOfflineShopNotConfiguredError);
   },
 );
 
 it('returns fresh search results and an empty array for unknown shops', async () => {
-  const storage = new StaticOfflineSessionStorage(stores());
+  const storage = new StaticSessionStorage({stores: stores()});
   const sessions = await storage.findSessionsByShop(shop);
   sessions[0].accessToken = 'changed';
   expect((await storage.findSessionsByShop(shop))[0].accessToken).toBe(
@@ -70,7 +70,7 @@ it('returns fresh search results and an empty array for unknown shops', async ()
 });
 
 it('rejects all writes and deletes, including empty batches, without modifying configuration', async () => {
-  const storage = new StaticOfflineSessionStorage(stores());
+  const storage = new StaticSessionStorage({stores: stores()});
   await expect(
     storage.storeSession(await storage.loadSession(id)),
   ).rejects.toBeInstanceOf(StaticOfflineReadOnlyError);
@@ -87,11 +87,44 @@ it('rejects all writes and deletes, including empty batches, without modifying c
 });
 
 it('turns upstream invalidation into a token rejection without persisting it', async () => {
-  const storage = new StaticOfflineSessionStorage(stores());
+  const storage = new StaticSessionStorage({stores: stores()});
   const session = await storage.loadSession(id);
   session.accessToken = undefined;
   await expect(storage.storeSession(session)).rejects.toBeInstanceOf(
     StaticOfflineTokenRejectedError,
   );
   expect((await storage.loadSession(id)).accessToken).toBe('test-token');
+});
+
+it('uses a shared scopes array for token-only store records and snapshots it', async () => {
+  const scopes = ['read_products'];
+  const storage = new StaticSessionStorage({
+    stores: {
+      [shop]: {accessToken: 'test-token'},
+      'second.myshopify.com': {accessToken: 'second-token'},
+    },
+    scopes,
+  });
+  scopes.push('write_products');
+  expect((await storage.loadSession(id)).scope).toBe('read_products');
+  expect(
+    (await storage.loadSession('offline_second.myshopify.com')).scope,
+  ).toBe('read_products');
+});
+
+it('keeps scope metadata undefined when no common or per-store scopes are provided', async () => {
+  const storage = new StaticSessionStorage({
+    stores: {[shop]: {accessToken: 'test-token'}},
+  });
+  const session = await storage.loadSession(id);
+  expect(session.scope).toBeUndefined();
+  expect(session.isActive(undefined)).toBe(true);
+});
+
+it('preserves an explicit per-store scope override, including an empty grant', async () => {
+  const storage = new StaticSessionStorage({
+    stores: {[shop]: {accessToken: 'test-token', scopes: []}},
+    scopes: ['read_products'],
+  });
+  expect((await storage.loadSession(id)).scope).toBe('');
 });

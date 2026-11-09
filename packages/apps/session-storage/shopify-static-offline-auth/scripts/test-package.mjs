@@ -109,7 +109,7 @@ try {
   run('node', [
     '--input-type=commonjs',
     '-e',
-    "const assert = require('node:assert/strict'); const api = require('shopify-static-offline-auth'); assert.equal(typeof api.createStaticOfflineShopifyApp, 'function'); assert.throws(() => require('shopify-static-offline-auth/dist/cjs/storage.js'), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});",
+    "const assert = require('node:assert/strict'); const api = require('shopify-static-offline-auth'); assert.equal(typeof api.createStaticOfflineShopifyApp, 'function'); const storage = new api.StaticSessionStorage({stores: {'example.myshopify.com': {accessToken:'test-token'}}, scopes:['read_products']}); storage.loadSession('offline_example.myshopify.com').then(session => assert.equal(session.scope, 'read_products')); assert.throws(() => require('shopify-static-offline-auth/dist/cjs/storage.js'), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});",
   ]);
   run(join(consumer, 'node_modules/.bin/tsc'), [
     '--noEmit',

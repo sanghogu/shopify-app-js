@@ -2,8 +2,8 @@ import {StaticOfflineConfigurationError} from './errors';
 
 export interface StaticOfflineCredential {
   readonly accessToken: string;
-  /** Actual granted scopes, not a request for additional permissions. */
-  readonly scopes: readonly string[];
+  /** Optional granted-scope metadata overriding the common scopes. */
+  readonly scopes?: readonly string[];
 }
 
 export type StaticOfflineStores = Readonly<
@@ -38,10 +38,15 @@ export function validateScopes(value: unknown): string[] {
 }
 
 /** Validate and copy configuration so callers cannot mutate the credential snapshot. */
-export function validateStores(value: unknown): StaticOfflineStores {
+export function validateStores(
+  value: unknown,
+  defaultScopes?: readonly string[],
+): StaticOfflineStores {
+  const commonScopes =
+    defaultScopes === undefined ? undefined : validateScopes(defaultScopes);
   if (!isRecord(value) || Object.keys(value).length === 0) {
     throw new StaticOfflineConfigurationError(
-      'Configure at least one store with an accessToken and scopes array.',
+      'Configure at least one store with an accessToken.',
     );
   }
   const stores: Record<string, StaticOfflineCredential> = Object.create(null);
@@ -58,7 +63,7 @@ export function validateStores(value: unknown): StaticOfflineStores {
       )
     ) {
       throw new StaticOfflineConfigurationError(
-        'Each store must contain only accessToken and scopes; expiring or online token records are unsupported.',
+        'Each store may contain only accessToken and optional scopes; expiring or online token records are unsupported.',
       );
     }
     if (
@@ -70,9 +75,13 @@ export function validateStores(value: unknown): StaticOfflineStores {
         'Each accessToken must be a nonempty string without whitespace.',
       );
     }
+    const scopes =
+      credential.scopes === undefined
+        ? commonScopes
+        : validateScopes(credential.scopes);
     stores[shop] = Object.freeze({
       accessToken: credential.accessToken,
-      scopes: Object.freeze(validateScopes(credential.scopes)),
+      ...(scopes === undefined ? {} : {scopes: Object.freeze([...scopes])}),
     });
   }
   return Object.freeze(stores);

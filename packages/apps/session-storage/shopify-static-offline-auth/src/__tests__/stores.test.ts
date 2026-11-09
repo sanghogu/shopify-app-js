@@ -26,6 +26,24 @@ it('parses, copies and freezes credentials, including scopes', () => {
   expect(Object.isFrozen(stores[shop].scopes)).toBe(true);
 });
 
+it('accepts token-only store records without inventing granted scopes', () => {
+  const stores = parseStaticOfflineStores(
+    JSON.stringify({[shop]: {accessToken: 'test-token'}}),
+  );
+  expect(stores[shop]).toEqual({accessToken: 'test-token'});
+  expect(Object.isFrozen(stores[shop])).toBe(true);
+});
+
+it('uses app-level scopes as the optional wrapper common default', async () => {
+  const app = createStaticOfflineShopifyApp({
+    ...config,
+    stores: {[shop]: {accessToken: 'test-token'}},
+  });
+  expect((await app.unauthenticated.admin(shop)).session.scope).toBe(
+    'read_products',
+  );
+});
+
 it.each(['', '{"secret-token":', 'null', '[]', '{}', '42'])(
   'rejects invalid JSON/configuration without leaking input (%s)',
   (json) => {

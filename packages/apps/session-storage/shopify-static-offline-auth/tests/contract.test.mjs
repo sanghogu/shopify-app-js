@@ -9,7 +9,7 @@ globalThis.fetch = async (url, init) => {
   requests.push({url: String(url), init});
   assert.match(
     String(url),
-    /^https:\/\/(alpha|beta)\.myshopify\.com\/admin\/api\/2026-10\/graphql\.json$/,
+    /^https:\/\/(alpha|beta)\.myshopify\.com\/admin\/api\/2026-(07|10)\/graphql\.json$/,
   );
   const response = responses.shift();
   assert.ok(
@@ -21,12 +21,15 @@ globalThis.fetch = async (url, init) => {
 
 const {
   createStaticOfflineShopifyApp,
+  StaticSessionStorage,
+  parseStaticOfflineStores,
+  StaticOfflineReadOnlyError,
   StaticOfflineShopNotConfiguredError,
   StaticOfflineTokenRejectedError,
 } = await import('shopify-static-offline-auth');
-const {ApiVersion, LogSeverity, GraphqlQueryError} =
+const {ApiVersion, LogSeverity, GraphqlQueryError, HttpResponseError} =
   await import('@shopify/shopify-api');
-const {AppDistribution} =
+const {AppDistribution, shopifyApp} =
   await import('@shopify/shopify-app-react-router/server');
 const SHOP = 'alpha.myshopify.com';
 const OTHER = 'beta.myshopify.com';
@@ -38,6 +41,32 @@ const APP_URL = 'https://app.example.com';
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
 const logs = [];
+
+function adapterApp(options = {}) {
+  const scopes = ['read_products'];
+  return shopifyApp({
+    apiKey: KEY,
+    apiSecretKey: SECRET,
+    apiVersion: ApiVersion.July26,
+    appUrl: APP_URL,
+    authPathPrefix: '/auth',
+    scopes,
+    sessionStorage: new StaticSessionStorage({
+      stores: parseStaticOfflineStores(
+        JSON.stringify({
+          [SHOP]: {accessToken: TOKEN},
+          [OTHER]: {accessToken: 'test-offline-token-beta'},
+        }),
+      ),
+      scopes,
+    }),
+    distribution: AppDistribution.SingleMerchant,
+    useOnlineTokens: false,
+    future: {expiringOfflineAccessTokens: false},
+    logger: {level: LogSeverity.Error, log: () => {}},
+    ...options,
+  });
+}
 
 beforeEach(() => {
   requests.length = 0;
@@ -203,6 +232,13 @@ for (const [name, claims, secret] of [
   test(`rejects invalid JWT ${name}`, async () => {
     await rejectedResponse(
       () => app().authenticate.admin(request(jwt(claims, secret))),
+      401,
+    );
+    assert.equal(requests.length, 0);
+  });
+  test(`direct adapter: rejects invalid JWT ${name} with official shopifyApp`, async () => {
+    await rejectedResponse(
+      () => adapterApp().authenticate.admin(request(jwt(claims, secret))),
       401,
     );
     assert.equal(requests.length, 0);
@@ -391,4 +427,144 @@ test('debug logging redacts JWTs and access tokens, including upstream rejection
   assert.ok(!output.includes(token));
   assert.ok(!output.includes(TOKEN));
   assert.ok(!output.includes(SECRET));
+});
+
+test('direct adapter: official shopifyApp uses shared scopes and the verified JWT shop', async () => {
+  const instance = adapterApp();
+  const context = await instance.authenticate.admin(request(jwt(), OTHER));
+  assert.ok(instance.sessionStorage instanceof StaticSessionStorage);
+  assert.equal(context.session.shop, SHOP);
+  assert.equal(context.session.scope, 'read_products');
+  assert.equal(context.session.accessToken, TOKEN);
+  assert.ok(context.billing && context.scopes);
+  assert.equal(requests.length, 0);
+  respond();
+  await context.admin.graphql('{ shop { name } }');
+  assert.match(requests[0].url, /2026-07\/graphql\.json$/);
+  assert.equal(
+    new Headers(requests[0].init.headers).get('X-Shopify-Access-Token'),
+    TOKEN,
+  );
+});
+
+test('direct adapter: document JWTs work without a factory wrapper', async () => {
+  const context = await adapterApp().authenticate.admin(documentRequest());
+  assert.equal(context.session.shop, SHOP);
+  assert.equal(requests.length, 0);
+});
+
+test('direct adapter: a signed unconfigured destination throws before token exchange', async () => {
+  const instance = adapterApp();
+  await assert.rejects(
+    instance.authenticate.admin(
+      request(
+        jwt({dest: `https://${UNKNOWN}`, iss: `https://${UNKNOWN}/admin`}),
+        SHOP,
+      ),
+    ),
+    StaticOfflineShopNotConfiguredError,
+  );
+  await assert.rejects(
+    instance.unauthenticated.admin(UNKNOWN),
+    StaticOfflineShopNotConfiguredError,
+  );
+  assert.equal(requests.length, 0);
+});
+
+test('direct adapter: a rejected admin token throws a typed error before reauthentication', async () => {
+  const instance = adapterApp();
+  const context = await instance.authenticate.admin(request());
+  respond(401, {errors: 'Invalid token'});
+  await assert.rejects(
+    context.admin.graphql('{ shop { name } }'),
+    StaticOfflineTokenRejectedError,
+  );
+  assert.equal(requests.length, 1);
+  assert.equal(
+    (await instance.sessionStorage.loadSession(`offline_${SHOP}`)).accessToken,
+    TOKEN,
+  );
+});
+
+test('direct adapter: background API errors retain the upstream error contract', async () => {
+  const {admin} = await adapterApp().unauthenticated.admin(SHOP);
+  respond(401, {errors: 'Invalid token'});
+  await assert.rejects(
+    admin.graphql('{ shop { name } }'),
+    (error) =>
+      error instanceof HttpResponseError && error.response.code === 401,
+  );
+  assert.equal(requests.length, 1);
+});
+
+test('direct adapter: webhook HMAC is validated before any credential lookup', async () => {
+  const instance = adapterApp();
+  await rejectedResponse(
+    () =>
+      instance.authenticate.webhook(
+        webhook(UNKNOWN, 'products/update', 'wrong-secret'),
+      ),
+    401,
+  );
+  await assert.rejects(
+    instance.authenticate.webhook(webhook(UNKNOWN)),
+    StaticOfflineShopNotConfiguredError,
+  );
+  const context = await instance.authenticate.webhook(webhook());
+  assert.equal(context.session.accessToken, TOKEN);
+  // Storage has no request/topic context. Applications handle uninstall cleanup.
+  const uninstall = await instance.authenticate.webhook(
+    webhook(SHOP, 'app/uninstalled'),
+  );
+  assert.equal(uninstall.session.accessToken, TOKEN);
+  assert.equal(uninstall.topic, 'APP_UNINSTALLED');
+  assert.equal(requests.length, 0);
+});
+
+test('direct adapter: credential deletion and writes never claim success', async () => {
+  const {sessionStorage} = adapterApp();
+  const session = await sessionStorage.loadSession(`offline_${SHOP}`);
+  await assert.rejects(
+    sessionStorage.storeSession(session),
+    StaticOfflineReadOnlyError,
+  );
+  await assert.rejects(
+    sessionStorage.deleteSession(session.id),
+    StaticOfflineReadOnlyError,
+  );
+  await assert.rejects(
+    sessionStorage.deleteSessions([session.id]),
+    StaticOfflineReadOnlyError,
+  );
+  assert.equal(
+    (await sessionStorage.loadSession(session.id)).accessToken,
+    TOKEN,
+  );
+});
+
+test('direct adapter: existing sessions do not trigger afterAuth initialization', async () => {
+  let afterAuthCalls = 0;
+  const instance = adapterApp({
+    hooks: {
+      afterAuth: async () => {
+        afterAuthCalls += 1;
+      },
+    },
+  });
+  await instance.authenticate.admin(request());
+  assert.equal(afterAuthCalls, 0);
+  assert.equal(requests.length, 0);
+});
+
+test('direct adapter: app scopes alone do not become claimed grant metadata', async () => {
+  const instance = adapterApp({
+    sessionStorage: new StaticSessionStorage({
+      stores: {[SHOP]: {accessToken: TOKEN}},
+    }),
+  });
+  const {session, admin} = await instance.authenticate.admin(request());
+  assert.equal(session.scope, undefined);
+  respond();
+  await admin.graphql('{ shop { name } }');
+  assert.equal(requests.length, 1);
 });

@@ -8,12 +8,18 @@ import {
 } from './errors';
 import {isShopDomain, validateStores, type StaticOfflineStores} from './stores';
 
-/** Internal bridge only: intentionally does not implement mutable storage semantics. */
-export class StaticOfflineSessionStorage implements SessionStorage {
+export interface StaticSessionStorageOptions {
+  stores: StaticOfflineStores;
+  /** Common scope metadata for every store; it does not grant API permissions. */
+  scopes?: readonly string[];
+}
+
+/** Read-only SessionStorage adapter for pre-provisioned non-expiring offline tokens. */
+export class StaticSessionStorage implements SessionStorage {
   readonly #stores: StaticOfflineStores;
 
-  constructor(stores: StaticOfflineStores) {
-    this.#stores = validateStores(stores);
+  constructor(options: StaticSessionStorageOptions) {
+    this.#stores = validateStores(options?.stores, options?.scopes);
   }
 
   hasShop(shop: string): boolean {
@@ -36,7 +42,7 @@ export class StaticOfflineSessionStorage implements SessionStorage {
       state: '',
       isOnline: false,
       accessToken: credential.accessToken,
-      scope: credential.scopes.join(','),
+      scope: credential.scopes?.join(','),
     });
   }
 

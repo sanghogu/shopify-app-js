@@ -1,14 +1,14 @@
 {
   "name": "shopify-static-offline-auth",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Read-only, pre-provisioned offline credentials for custom Shopify React Router apps",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sanghogu/shopify-app-js.git",
-    "directory": "packages/apps/shopify-static-offline-auth"
+    "directory": "packages/apps/session-storage/shopify-static-offline-auth"
   },
-  "homepage": "https://github.com/sanghogu/shopify-app-js/tree/main/packages/apps/shopify-static-offline-auth#readme",
+  "homepage": "https://github.com/sanghogu/shopify-app-js/tree/main/packages/apps/session-storage/shopify-static-offline-auth#readme",
   "engines": {
     "node": ">=22.0.0"
   },

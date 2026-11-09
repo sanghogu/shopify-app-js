@@ -15,7 +15,7 @@ import {
   StaticOfflineTokenRejectedError,
 } from './errors';
 import {redactedLogger} from './logger';
-import {StaticOfflineSessionStorage} from './storage';
+import {StaticSessionStorage} from './storage';
 import {isShopDomain, validateScopes, validateStores} from './stores';
 import type {StaticOfflineAppConfig, StaticOfflineShopifyApp} from './types';
 
@@ -113,16 +113,16 @@ export function createStaticOfflineShopifyApp(
   config: StaticOfflineAppConfig,
 ): StaticOfflineShopifyApp {
   validateConfig(config);
-  const stores = validateStores(config.stores);
   const scopes = validateScopes(config.scopes ?? []);
+  const stores = validateStores(config.stores, scopes);
   for (const credential of Object.values(stores)) {
-    if (!new AuthScopes([...credential.scopes]).has(scopes))
+    if (!new AuthScopes([...(credential.scopes ?? [])]).has(scopes))
       throw new StaticOfflineConfigurationError(
         'A configured store is missing required app scopes. Update the grant and provision its token before starting.',
       );
   }
   const {stores: _stores, ...appConfig} = config;
-  const storage = new StaticOfflineSessionStorage(stores);
+  const storage = new StaticSessionStorage({stores, scopes});
   const app = shopifyApp({
     ...appConfig,
     scopes,
